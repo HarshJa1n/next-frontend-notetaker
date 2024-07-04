@@ -13,6 +13,8 @@ import {
   ListItem,
   Alert,
   IconButton,
+  Input,
+  CircularProgress,
 } from '@mui/material';
 import { MicExternalOffRounded, MicNone } from '@mui/icons-material';
 
@@ -27,6 +29,15 @@ export default function Home() {
   const [ngrokUrl, setNgrokUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  
+  const [uploadedAudioUrl, setUploadedAudioUrl] = useState<string | null>(null);
+  const [uploadedAudioName, setUploadedAudioName] = useState<string | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [recordedAudioName, setRecordedAudioName] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+
+
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const audioRef = useRef<MediaRecorder | null>(null);
   
 
@@ -110,7 +121,7 @@ export default function Home() {
           'Content-Type': 'multipart/form-data',
           'Access-Control-Allow-Origin': '*'
         },
-        withCredentials: false
+
       });
       alert(response.data.message);
     } catch (error) {
@@ -131,17 +142,25 @@ export default function Home() {
     const formData = new FormData();
     formData.append('audio', file);
 
+    // Set the audio URL and file name to display the audio player and file name
+    setUploadedAudioUrl(URL.createObjectURL(file));
+    setUploadedAudioName(file.name);
+
+    setIsTranscribing(true); // Start loader
+
     try {
       const response = await axios.post(`${ngrokUrl}/transcribe`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-           'Access-Control-Allow-Origin': '*'
-         }
+          'Access-Control-Allow-Origin': '*'
+        }
       });
       setTranscriptionResult(response.data.transcription);
     } catch (error) {
       console.error('Error:', error);
       setErrorMessage('Error transcribing audio');
+    } finally {
+      setIsTranscribing(false); // Stop loader
     }
   };
 
@@ -150,21 +169,28 @@ export default function Home() {
       setErrorMessage('Please enter the ngrok URL');
       return;
     }
-
+  
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       const audioChunks: BlobPart[] = [];
-
+  
       mediaRecorder.addEventListener("dataavailable", event => {
         audioChunks.push(event.data);
       });
-
+  
       mediaRecorder.addEventListener("stop", async () => {
         const audioBlob = new Blob(audioChunks);
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recorded_audio.webm');
-
+  
+        // Set the recorded audio URL and name
+        setRecordedAudioUrl(URL.createObjectURL(audioBlob));
+        setRecordedAudioName('recorded_audio.webm');
+  
+        setIsTranscribing(true); // Start loader
+        setIsRecording(false); // Stop recording indicator
+  
         try {
           const response = await axios.post(`${ngrokUrl}/transcribe`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
@@ -173,20 +199,26 @@ export default function Home() {
         } catch (error) {
           console.error('Error:', error);
           setErrorMessage('Error transcribing recorded audio');
+        } finally {
+          setIsTranscribing(false); // Stop loader
         }
       });
-
+  
       mediaRecorder.start();
       audioRef.current = mediaRecorder;
+      setIsRecording(true); // Start recording indicator
     } catch (error) {
       console.error("Error accessing microphone:", error);
       setErrorMessage('Error accessing microphone');
     }
   };
-
+  
   const stopRecording = () => {
     audioRef.current?.stop();
   };
+  
+  
+
 
   return (
     <Container maxWidth="md" style={{
@@ -212,6 +244,9 @@ export default function Home() {
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h5" component="h2" gutterBottom>
           Speaker Enrollment
+        </Typography>
+        <Typography variant="body2" gutterBottom mb={2} color={"#b3b3b3"}>
+          To later identify speakers in the transcription, you need to enroll them by providing their names and audio samples.
         </Typography>
         <Box sx={{ mb: 2 }}>
           <TextField
@@ -266,25 +301,58 @@ export default function Home() {
 
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h5" component="h2" gutterBottom>
-          Audio Upload for Transcription
+          Upload the Audio for Transcription
         </Typography>
-        <Button variant="contained" component="label">
-          Upload Audio
-          <input type="file" hidden accept="audio/*" onChange={uploadAudio} />
-        </Button>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Input
+            type="file"
+            inputProps={{ accept: 'audio/*' }}
+            onChange={uploadAudio}
+            sx={{ mr: 2 }}
+          />
+          {isTranscribing && <CircularProgress size={24} />}
+        </Box>
+        {uploadedAudioName && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1">Uploaded Audio:</Typography>
+            <Typography variant="body2">{uploadedAudioName}</Typography>
+            <audio controls src={uploadedAudioUrl}></audio>
+          </Box>
+        )}
       </Paper>
 
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h5" component="h2" gutterBottom>
-          Record Audio
-        </Typography>
-        <Button variant="contained" onClick={startRecording} sx={{ mr: 2 }}>
-          Start Recording
-        </Button>
-        <Button variant="contained" onClick={stopRecording}>
-          Stop Recording
-        </Button>
-      </Paper>
+  <Typography variant="h5" component="h2" gutterBottom>
+   OR Record Audio
+  </Typography>
+  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+    <Button
+      variant="contained"
+      onClick={startRecording}
+      sx={{ mr: 2, backgroundColor: isRecording ? 'red' : undefined }}
+      disabled={isRecording}
+    >
+      {isRecording ? 'Recording...' : 'Start Recording'}
+    </Button>
+    <Button
+      variant="contained"
+      onClick={stopRecording}
+      disabled={!isRecording}
+    >
+      Stop Recording
+    </Button>
+    {isTranscribing && <CircularProgress size={24} sx={{ ml: 2 }} />}
+  </Box>
+  {recordedAudioUrl && (
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="subtitle1">Recorded Audio:</Typography>
+      <Typography variant="body2">{recordedAudioName}</Typography>
+      <audio controls src={recordedAudioUrl}></audio>
+    </Box>
+  )}
+</Paper>
+
+
 
       <Paper elevation={3} sx={{ p: 3 }}>
         <Typography variant="h5" component="h2" gutterBottom>
