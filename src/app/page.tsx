@@ -1,113 +1,308 @@
-import Image from "next/image";
+'use client'
+
+import React, { useState, useRef } from 'react';
+import axios from 'axios';
+import {
+  Container,
+  Typography,
+  Button,
+  TextField,
+  Box,
+  Paper,
+  List,
+  ListItem,
+  Alert,
+  IconButton,
+} from '@mui/material';
+import { MicExternalOffRounded, MicNone } from '@mui/icons-material';
+
+
 
 export default function Home() {
+  const [numSpeakers, setNumSpeakers] = useState(0);
+  // const [speakerForms, setSpeakerForms] = useState<Array<{ name: string; audio: File | null }>>([]);
+  const [speakerForms, setSpeakerForms] = useState<Array<{ name: string; audio: File | null; audioUrl: string | null }>>([]);
+
+  const [transcriptionResult, setTranscriptionResult] = useState('');
+  const [ngrokUrl, setNgrokUrl] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const audioRef = useRef<MediaRecorder | null>(null);
+  
+
+  const initializeEnrollment = () => {
+    const forms = Array.from({ length: numSpeakers }, () => ({
+      name: '',
+      audio: null,
+      audioUrl: null
+    }));
+    setSpeakerForms(forms);
+  };
+
+
+  const handleSpeakerChange = (index: number, field: 'name' | 'audio', value: string | File) => {
+    const updatedForms = [...speakerForms];
+    updatedForms[index][field] = value as any;
+    if (field === 'audio' && value instanceof File) {
+      updatedForms[index].audioUrl = URL.createObjectURL(value);
+    }
+    setSpeakerForms(updatedForms);
+  };
+  
+
+  const startEnrollmentRecording = async (index: number) => {
+    if (!ngrokUrl) {
+      setErrorMessage('Please enter the ngrok URL');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const audioChunks: BlobPart[] = [];
+
+      mediaRecorder.addEventListener("dataavailable", event => {
+        audioChunks.push(event.data);
+      });
+
+      mediaRecorder.addEventListener("stop", () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const updatedForms = [...speakerForms];
+        updatedForms[index].audio = audioBlob;
+        updatedForms[index].audioUrl = URL.createObjectURL(audioBlob);
+        setSpeakerForms(updatedForms);
+      });
+
+      mediaRecorder.start();
+      audioRef.current = mediaRecorder;
+      setRecordingIndex(index);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      setErrorMessage('Error accessing microphone');
+    }
+  };
+
+  const stopEnrollmentRecording = () => {
+    audioRef.current?.stop();
+    setRecordingIndex(null);
+  };
+
+
+  const enrollSpeakers = async () => {
+    if (!ngrokUrl) {
+      setErrorMessage('Please enter the ngrok URL');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('num_speakers', numSpeakers.toString());
+
+    speakerForms.forEach((speaker, index) => {
+      formData.append('names', speaker.name);
+      if (speaker.audio) {
+        formData.append(`audio_${index}`, speaker.audio, `speaker_${index}.webm`);
+      }
+    });
+
+    try {
+      const response = await axios.post(`${ngrokUrl}/enroll`, formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Access-Control-Allow-Origin': '*'
+        },
+        withCredentials: false
+      });
+      alert(response.data.message);
+    } catch (error) {
+      console.error('Error:', error);
+      setErrorMessage('Error enrolling speakers');
+    }
+  };
+
+  const uploadAudio = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!ngrokUrl) {
+      setErrorMessage('Please enter the ngrok URL');
+      return;
+    }
+
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('audio', file);
+
+    try {
+      const response = await axios.post(`${ngrokUrl}/transcribe`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+           'Access-Control-Allow-Origin': '*'
+         }
+      });
+      setTranscriptionResult(response.data.transcription);
+    } catch (error) {
+      console.error('Error:', error);
+      setErrorMessage('Error transcribing audio');
+    }
+  };
+
+  const startRecording = async () => {
+    if (!ngrokUrl) {
+      setErrorMessage('Please enter the ngrok URL');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const audioChunks: BlobPart[] = [];
+
+      mediaRecorder.addEventListener("dataavailable", event => {
+        audioChunks.push(event.data);
+      });
+
+      mediaRecorder.addEventListener("stop", async () => {
+        const audioBlob = new Blob(audioChunks);
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recorded_audio.webm');
+
+        try {
+          const response = await axios.post(`${ngrokUrl}/transcribe`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          setTranscriptionResult(response.data.transcription);
+        } catch (error) {
+          console.error('Error:', error);
+          setErrorMessage('Error transcribing recorded audio');
+        }
+      });
+
+      mediaRecorder.start();
+      audioRef.current = mediaRecorder;
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      setErrorMessage('Error accessing microphone');
+    }
+  };
+
+  const stopRecording = () => {
+    audioRef.current?.stop();
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:size-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
+    <Container maxWidth="md" style={{
+    }}>
+      <Typography variant="h3" component="h1" gutterBottom>
+        Transcription with Speaker Identification
+      </Typography>
 
-      <div className="relative z-[-1] flex place-items-center before:absolute before:h-[300px] before:w-full before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 sm:before:w-[480px] sm:after:w-[240px] before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
+      <Paper elevation={3} sx={{ p: 3, mb: 3, color: "#dedede44" }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Backend Configuration
+        </Typography>
+        <TextField
+          fullWidth
+          label="ngrok URL"
+          value={ngrokUrl}
+          onChange={(e) => setNgrokUrl(e.target.value)}
+          placeholder="Enter the ngrok URL (e.g., https://1234-56-78-910.ngrok.io)"
+          sx={{ mb: 2 }}
         />
-      </div>
+      </Paper>
 
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Speaker Enrollment
+        </Typography>
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            type="number"
+            label="Number of speakers"
+            value={numSpeakers}
+            onChange={(e) => setNumSpeakers(parseInt(e.target.value))}
+            sx={{ mr: 2 }}
+          />
+          <Button variant="contained" onClick={initializeEnrollment}>
+            Initialize Enrollment
+          </Button>
+        </Box>
+        <List>
+          {speakerForms.map((speaker, index) => (
+            <ListItem key={index}>
+              <TextField
+                label={`Speaker ${index + 1} Name`}
+                value={speaker.name}
+                onChange={(e) => handleSpeakerChange(index, 'name', e.target.value)}
+                sx={{ mr: 2 }}
+              />
+              <Button
+                variant="contained"
+                component="label"
+                sx={{ mr: 2 }}
+              >
+                Upload Audio
+                <input
+                  type="file"
+                  hidden
+                  accept="audio/*"
+                  onChange={(e) => handleSpeakerChange(index, 'audio', e.target.files?.[0] || null)}
+                />
+              </Button>
+              <IconButton 
+                color={recordingIndex === index ? "secondary" : "primary"}
+                onClick={() => recordingIndex === index ? stopEnrollmentRecording() : startEnrollmentRecording(index)}
+              >
+                <MicNone />
+              </IconButton>
+              {speaker.audioUrl && <audio controls src={speaker.audioUrl} />}
+            </ListItem>
+          ))}
+        </List>
+        {speakerForms.length > 0 && (
+          <Button variant="contained" onClick={enrollSpeakers}>
+            Enroll Speakers
+          </Button>
+        )}
+      </Paper>
 
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Audio Upload for Transcription
+        </Typography>
+        <Button variant="contained" component="label">
+          Upload Audio
+          <input type="file" hidden accept="audio/*" onChange={uploadAudio} />
+        </Button>
+      </Paper>
 
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Explore starter templates for Next.js.
-          </p>
-        </a>
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Record Audio
+        </Typography>
+        <Button variant="contained" onClick={startRecording} sx={{ mr: 2 }}>
+          Start Recording
+        </Button>
+        <Button variant="contained" onClick={stopRecording}>
+          Stop Recording
+        </Button>
+      </Paper>
 
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-balance text-sm opacity-50">
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+      <Paper elevation={3} sx={{ p: 3 }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Transcription Result
+        </Typography>
+        <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', bgcolor: '#f0f0f0', p: 2, borderRadius: 1, color:'#000' }}>
+          {transcriptionResult}
+        </Typography>
+      </Paper>
+
+      {errorMessage && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {errorMessage}
+        </Alert>
+      )}
+    </Container>
   );
 }
+//display the audio
+//background
+//loader maybe
