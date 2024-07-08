@@ -38,6 +38,7 @@ export default function Home() {
 
 
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isEnrolling, setIsEnrolling] = useState(false);
   const audioRef = useRef<MediaRecorder | null>(null);
   
 
@@ -105,6 +106,8 @@ export default function Home() {
       return;
     }
 
+    setIsEnrolling(true); // Start loader
+
     const formData = new FormData();
     formData.append('num_speakers', numSpeakers.toString());
 
@@ -127,6 +130,9 @@ export default function Home() {
     } catch (error) {
       console.error('Error:', error);
       setErrorMessage('Error enrolling speakers');
+    }
+    finally {
+      setIsEnrolling(false); // Stop loader
     }
   };
 
@@ -292,10 +298,14 @@ export default function Home() {
             </ListItem>
           ))}
         </List>
-        {speakerForms.length > 0 && (
+        {speakerForms.length > 0 && (<>
+        
           <Button variant="contained" onClick={enrollSpeakers}>
             Enroll Speakers
           </Button>
+          {isEnrolling && <CircularProgress size={24} />}
+        </>
+          
         )}
       </Paper>
 
