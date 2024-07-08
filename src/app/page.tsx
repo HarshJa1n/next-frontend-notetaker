@@ -79,9 +79,11 @@ export default function Home() {
 
       mediaRecorder.addEventListener("stop", () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
+
         const updatedForms = [...speakerForms];
-        updatedForms[index].audio = audioBlob;
-        updatedForms[index].audioUrl = URL.createObjectURL(audioBlob);
+        updatedForms[index].audio = audioFile;
+        updatedForms[index].audioUrl = URL.createObjectURL(audioFile);
         setSpeakerForms(updatedForms);
       });
 
@@ -285,7 +287,7 @@ export default function Home() {
                   type="file"
                   hidden
                   accept="audio/*"
-                  onChange={(e) => handleSpeakerChange(index, 'audio', e.target.files?.[0] || null)}
+                  onChange={(e) => handleSpeakerChange(index, 'audio', e.target.files?.[0] || 's' )}
                 />
               </Button>
               <IconButton 
@@ -326,7 +328,7 @@ export default function Home() {
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle1">Uploaded Audio:</Typography>
             <Typography variant="body2">{uploadedAudioName}</Typography>
-            <audio controls src={uploadedAudioUrl}></audio>
+            <audio controls src={uploadedAudioUrl || undefined}></audio>
           </Box>
         )}
       </Paper>
