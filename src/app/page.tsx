@@ -17,15 +17,13 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { MicExternalOffRounded, MicNone } from '@mui/icons-material';
-
-
+import ReactMarkdown from 'react-markdown'; 
 
 export default function Home() {
   const [numSpeakers, setNumSpeakers] = useState(0);
-  // const [speakerForms, setSpeakerForms] = useState<Array<{ name: string; audio: File | null }>>([]);
   const [speakerForms, setSpeakerForms] = useState<Array<{ name: string; audio: File | null; audioUrl: string | null }>>([]);
 
-  const [transcriptionResult, setTranscriptionResult] = useState('');
+  const [transcriptionResult, setTranscriptionResult] = useState<{ message: string, summary_and_actions: string, transcription: string } | null>(null);
   const [ngrokUrl, setNgrokUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
@@ -35,7 +33,6 @@ export default function Home() {
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordedAudioName, setRecordedAudioName] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-
 
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -163,7 +160,7 @@ export default function Home() {
           'Access-Control-Allow-Origin': '*'
         }
       });
-      setTranscriptionResult(response.data.transcription);
+      setTranscriptionResult(response.data);
     } catch (error) {
       console.error('Error:', error);
       setErrorMessage('Error transcribing audio');
@@ -203,7 +200,7 @@ export default function Home() {
           const response = await axios.post(`${ngrokUrl}/transcribe`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
           });
-          setTranscriptionResult(response.data.transcription);
+          setTranscriptionResult(response.data);
         } catch (error) {
           console.error('Error:', error);
           setErrorMessage('Error transcribing recorded audio');
@@ -225,9 +222,6 @@ export default function Home() {
     audioRef.current?.stop();
   };
   
-  
-
-
   return (
     <Container maxWidth="md" style={{
     }}>
@@ -271,118 +265,161 @@ export default function Home() {
         <List>
           {speakerForms.map((speaker, index) => (
             <ListItem key={index}>
-              <TextField
-                label={`Speaker ${index + 1} Name`}
-                value={speaker.name}
-                onChange={(e) => handleSpeakerChange(index, 'name', e.target.value)}
-                sx={{ mr: 2 }}
-              />
-              <Button
-                variant="contained"
-                component="label"
-                sx={{ mr: 2 }}
-              >
-                Upload Audio
-                <input
-                  type="file"
-                  hidden
-                  accept="audio/*"
-                  onChange={(e) => handleSpeakerChange(index, 'audio', e.target.files?.[0] || 's' )}
+              <Box sx={{ width: '100%' }}>
+                <TextField
+                  fullWidth
+                  label={`Speaker ${index + 1} Name`}
+                  value={speaker.name}
+                  onChange={(e) => handleSpeakerChange(index, 'name', e.target.value)}
+                  sx={{ mb: 2 }}
                 />
-              </Button>
-              <IconButton 
-                color={recordingIndex === index ? "secondary" : "primary"}
-                onClick={() => recordingIndex === index ? stopEnrollmentRecording() : startEnrollmentRecording(index)}
-              >
-                <MicNone />
-              </IconButton>
-              {speaker.audioUrl && <audio controls src={speaker.audioUrl} />}
+                <Button
+                  variant="contained"
+                  component="label"
+                  sx={{ mr: 2 }}
+                >
+                  Upload Audio
+                  <input
+                    type="file"
+                    hidden
+                    accept="audio/*"
+                    onChange={(e) => handleSpeakerChange(index, 'audio', e.target.files?.[0] || '')}
+                  />
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => startEnrollmentRecording(index)}
+                  disabled={recordingIndex !== null}
+                  sx={{ mr: 2 }}
+                >
+                  {recordingIndex === index ? 'Recording...' : 'Record Audio'}
+                </Button>
+                {recordingIndex === index && (
+                  <Button
+                    variant="contained"
+                    onClick={stopEnrollmentRecording}
+                    color="error"
+                  >
+                    Stop Recording
+                  </Button>
+                )}
+                {speaker.audioUrl && (
+                  <Box mt={2}>
+                    <audio controls src={speaker.audioUrl} />
+                  </Box>
+                )}
+              </Box>
             </ListItem>
           ))}
         </List>
-        {speakerForms.length > 0 && (<>
-        
-          <Button variant="contained" onClick={enrollSpeakers}>
-            Enroll Speakers
+        {numSpeakers > 0 && (
+          <Button
+            variant="contained"
+            onClick={enrollSpeakers}
+            disabled={isEnrolling} // Disable button during loading
+            sx={{ mt: 2 }}
+          >
+            {isEnrolling ? <CircularProgress size={24} color="inherit" /> : "Enroll Speakers"}
           </Button>
-          {isEnrolling && <CircularProgress size={24} />}
-        </>
-          
         )}
       </Paper>
 
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h5" component="h2" gutterBottom>
-          Upload the Audio for Transcription
+          Audio Transcription
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Input
-            type="file"
-            inputProps={{ accept: 'audio/*' }}
-            onChange={uploadAudio}
+        <Typography variant="body2" gutterBottom mb={2} color={"#b3b3b3"}>
+          Upload an audio file or record a new one for transcription.
+        </Typography>
+        <Box sx={{ mb: 2 }}>
+          <Button
+            variant="contained"
+            component="label"
             sx={{ mr: 2 }}
-          />
-          {isTranscribing && <CircularProgress size={24} />}
+          >
+            Upload Audio
+            <input
+              type="file"
+              hidden
+              accept="audio/*"
+              onChange={uploadAudio}
+            />
+          </Button>
+          <Button
+            variant="contained"
+            onClick={startRecording}
+            disabled={isRecording} // Disable button during recording
+          >
+            {isRecording ? <CircularProgress size={24} color="inherit" /> : "Record Audio"}
+          </Button>
+          {isRecording && (
+            <Button
+              variant="contained"
+              onClick={stopRecording}
+              color="error"
+              sx={{ ml: 2 }}
+            >
+              Stop Recording
+            </Button>
+          )}
         </Box>
-        {uploadedAudioName && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle1">Uploaded Audio:</Typography>
-            <Typography variant="body2">{uploadedAudioName}</Typography>
-            <audio controls src={uploadedAudioUrl || undefined}></audio>
+        {uploadedAudioUrl && (
+          <Box mt={2}>
+            <Typography variant="body1" gutterBottom>
+              Uploaded Audio: {uploadedAudioName}
+            </Typography>
+            <audio controls src={uploadedAudioUrl} />
+          </Box>
+        )}
+        {recordedAudioUrl && (
+          <Box mt={2}>
+            <Typography variant="body1" gutterBottom>
+              Recorded Audio: {recordedAudioName}
+            </Typography>
+            <audio controls src={recordedAudioUrl} />
           </Box>
         )}
       </Paper>
 
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-  <Typography variant="h5" component="h2" gutterBottom>
-   OR Record Audio
-  </Typography>
-  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-    <Button
-      variant="contained"
-      onClick={startRecording}
-      sx={{ mr: 2, backgroundColor: isRecording ? 'red' : undefined }}
-      disabled={isRecording}
-    >
-      {isRecording ? 'Recording...' : 'Start Recording'}
-    </Button>
-    <Button
-      variant="contained"
-      onClick={stopRecording}
-      disabled={!isRecording}
-    >
-      Stop Recording
-    </Button>
-    {isTranscribing && <CircularProgress size={24} sx={{ ml: 2 }} />}
-  </Box>
-  {recordedAudioUrl && (
-    <Box sx={{ mt: 2 }}>
-      <Typography variant="subtitle1">Recorded Audio:</Typography>
-      <Typography variant="body2">{recordedAudioName}</Typography>
-      <audio controls src={recordedAudioUrl}></audio>
-    </Box>
-  )}
-</Paper>
-
-
-
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h5" component="h2" gutterBottom>
-          Transcription Result
-        </Typography>
-        <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', bgcolor: '#f0f0f0', p: 2, borderRadius: 1, color:'#000' }}>
-          {transcriptionResult}
-        </Typography>
-      </Paper>
-
       {errorMessage && (
-        <Alert severity="error" sx={{ mt: 2 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
           {errorMessage}
         </Alert>
+      )}
+      {isTranscribing && (
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="body1" gutterBottom>
+            Transcribing...
+          </Typography>
+        </Paper>
+      )}
+
+      {transcriptionResult && (
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="h5" component="h2" gutterBottom>
+            Transcription Result
+          </Typography>
+          <Typography variant="h6" component="h3" gutterBottom>
+            Message
+          </Typography>
+          <Typography variant="body1" gutterBottom mb={2}>
+            {transcriptionResult.message}
+          </Typography>
+          <Typography variant="h6" component="h3" gutterBottom>
+            Summary and Actions
+          </Typography>
+          <Typography variant="body1" gutterBottom mb={2}>
+            {/* {transcriptionResult.summary_and_actions} */}
+            <ReactMarkdown>{transcriptionResult.summary_and_actions}</ReactMarkdown>
+          </Typography>
+          <Typography variant="h6" component="h3" gutterBottom>
+            Transcription
+          </Typography>
+          <Typography variant="body1" gutterBottom mb={2}>
+            {transcriptionResult.transcription}
+          </Typography>
+        </Paper>
       )}
     </Container>
   );
 }
-//display the audio
-//background
-//loader maybe
