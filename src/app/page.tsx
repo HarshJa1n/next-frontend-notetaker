@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import {
   Container,
@@ -15,6 +15,12 @@ import {
   IconButton,
   Input,
   CircularProgress,
+  TableContainer,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import { MicExternalOffRounded, MicNone } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown'; 
@@ -36,7 +42,56 @@ export default function Home() {
 
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
+
+  const [pastTranscriptions, setPastTranscriptions] = useState<any[]>([]);
+
   const audioRef = useRef<MediaRecorder | null>(null);
+
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // addd this header "ngrok-skip-browser-warning": "69420"
+
+  useEffect(() => {
+    const fetchPastTranscriptions = async () => {
+      if (!ngrokUrl) {
+        setFetchError('Please enter the ngrok URL');
+        return;
+      }
+
+      try {
+        const response = await axios.get(`${ngrokUrl}/get_transcriptions`, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'ngrok-skip-browser-warning': '69420'
+           }
+        }
+        );
+        setPastTranscriptions(response.data);
+        setFetchError(null);
+      } catch (error) {
+        console.error('Error fetching past transcriptions:', error);
+        if (axios.isAxiosError(error)) {
+          if (error.code === 'ECONNABORTED') {
+            setFetchError('Connection timed out. Please check your ngrok URL and try again.');
+          } else if (error.response) {
+            setFetchError(`Error: ${error.response.status} - ${error.response.data}`);
+          } else if (error.request) {
+            setFetchError('No response received. Please check your network connection and ngrok URL.');
+          } else {
+            setFetchError('An unexpected error occurred. Please try again.');
+          }
+        } else {
+          setFetchError('An unexpected error occurred. Please try again.');
+        }
+        setPastTranscriptions([]);
+      }
+    };
+
+    if (ngrokUrl) {
+      fetchPastTranscriptions();
+    }
+  }, [ngrokUrl]);
+
   
 
   const initializeEnrollment = () => {
@@ -400,12 +455,6 @@ export default function Home() {
             Transcription Result
           </Typography>
           <Typography variant="h6" component="h3" gutterBottom>
-            Message
-          </Typography>
-          <Typography variant="body1" gutterBottom mb={2}>
-            {transcriptionResult.message}
-          </Typography>
-          <Typography variant="h6" component="h3" gutterBottom>
             Summary and Actions
           </Typography>
           <Typography variant="body1" gutterBottom mb={2}>
@@ -420,6 +469,47 @@ export default function Home() {
           </Typography>
         </Paper>
       )}
+          <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Past Transcriptions
+        </Typography>
+        {fetchError ? (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {fetchError}
+          </Alert>
+        ) : pastTranscriptions.length === 0 ? (
+          <Typography variant="body1">No past transcriptions found.</Typography>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Filename</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pastTranscriptions.map((transcription) => (
+                  <TableRow key={transcription._id}>
+                    <TableCell>{new Date(transcription.timestamp).toLocaleString()}</TableCell>
+                    <TableCell>{transcription.filename}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="contained"
+                        onClick={() => setTranscriptionResult(transcription)}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
     </Container>
   );
 }
