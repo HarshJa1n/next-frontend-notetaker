@@ -1,31 +1,48 @@
-'use client'
-import { ThemeProvider } from '@emotion/react';
-import { Roboto } from 'next/font/google';
-import type { ReactNode } from 'react';
-import theme from './theme';
+import type { Metadata } from 'next'
+import ThemeRegistry from '@/components/ThemeRegistry'
+import Sidebar from '@/components/Sidebar'
+import { AppBar, Box, Toolbar, Typography, Container } from '@mui/material'
 
-const roboto = Roboto({
-  weight: ['300', '400', '500', '700'],
-  subsets: ['latin'],
-  display: 'swap',
-});
+export const metadata: Metadata = {
+  title: 'Meet-sense',
+  description: 'Meeting transcription and analysis tool',
+}
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en" className={roboto.className}>
-      <body style={{
-        margin: 100,
-        fontFamily: 'Roboto, sans-serif',
-        backgroundColor: theme.palette.background.default,
-        color: "#fff"
-      }}>
-        <ThemeProvider theme={theme}>
-
-          {children}
-
-        </ThemeProvider>
-
+    <html lang="en">
+      <body>
+        <ThemeRegistry>
+          <Box sx={{ display: 'flex' }}>
+            <AppBar position="fixed" sx={{ zIndex: 2000 }}>
+              <Toolbar>
+                <Typography variant="h6" noWrap component="div">
+                  Meet-sense
+                </Typography>
+              </Toolbar>
+            </AppBar>
+            <Sidebar />
+            <Box
+              component="main"
+              sx={{
+                flexGrow: 1,
+                bgcolor: 'background.default',
+                p: 3,
+                minHeight: '100vh',
+                mt: 8,
+              }}
+            >
+              <Container maxWidth="lg">
+                {children}
+              </Container>
+            </Box>
+          </Box>
+        </ThemeRegistry>
       </body>
     </html>
-  );
+  )
 }
