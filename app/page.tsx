@@ -1,101 +1,183 @@
-import Image from "next/image";
+// app/page.tsx
+'use client'
+
+import { useState, useRef } from 'react'
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Mic, MicOff, Upload } from "lucide-react"
+import axios from 'axios'
+
+const baseURL = "http://127.0.0.1:5000"
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [transcriptionResult, setTranscriptionResult] = useState<{
+    transcription: string
+    summary_and_actions: string 
+  } | null>(null)
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
+  const [recordedAudioName, setRecordedAudioName] = useState<string | null>(null)
+  const audioRef = useRef<MediaRecorder | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream)
+      const audioChunks: BlobPart[] = []
+
+      mediaRecorder.addEventListener("dataavailable", event => {
+        audioChunks.push(event.data)
+      })
+
+      mediaRecorder.addEventListener("stop", async () => {
+        const audioBlob = new Blob(audioChunks)
+        const formData = new FormData()
+        formData.append('audio', audioBlob, 'recorded_audio.webm')
+
+        setRecordedAudioUrl(URL.createObjectURL(audioBlob))
+        setRecordedAudioName('recorded_audio.webm')
+
+        setIsTranscribing(true)
+        setIsRecording(false)
+
+        try {
+          const response = await axios.post(`${baseURL}/transcribe`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          })
+          setTranscriptionResult(response.data)
+        } catch (error) {
+          console.error('Error:', error)
+          setErrorMessage('Error transcribing recorded audio')
+        } finally {
+          setIsTranscribing(false)
+        }
+      })
+
+      mediaRecorder.start()
+      audioRef.current = mediaRecorder
+      setIsRecording(true)
+      setErrorMessage('')
+    } catch (error) {
+      console.error("Error accessing microphone:", error)
+      setErrorMessage('Error accessing microphone')
+    }
+  }
+
+  const stopRecording = () => {
+    audioRef.current?.stop()
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      console.log("File uploaded:", file) 
+      setIsTranscribing(true)
+      const formData = new FormData()
+      formData.append('audio', file)
+
+      try {
+        const response = await axios.post(`${baseURL}/transcribe`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        setTranscriptionResult(response.data)
+        setRecordedAudioUrl(URL.createObjectURL(file))
+        setRecordedAudioName(file.name)
+      } catch (error) {
+        console.error('Error:', error)
+        setErrorMessage('Error transcribing uploaded audio')
+      } finally {
+        setIsTranscribing(false)
+      }
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold">Meet-sense Transcription</h1>
+
+      {errorMessage && (
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Record or Upload Audio</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex justify-center space-x-4">
+            <Button
+              variant={isRecording ? "destructive" : "default"}
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={isTranscribing}
+            >
+              {isRecording ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+              {isRecording ? 'Stop Recording' : 'Start Recording'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isRecording || isTranscribing}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Upload Audio
+            </Button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept="audio/*"
+              className="hidden"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+
+          {recordedAudioUrl && (
+            <div className="mt-4">
+              <p className="text-sm font-medium">{recordedAudioName}</p>
+              <audio controls src={recordedAudioUrl} className="w-full mt-2" />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {isTranscribing && (
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+
+      {transcriptionResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Transcription Result</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="transcription">
+              <TabsList>
+                <TabsTrigger value="transcription">Transcription</TabsTrigger>
+                <TabsTrigger value="meeting-notes">Meeting Notes</TabsTrigger>
+              </TabsList>
+              <TabsContent value="transcription">
+                <pre className="whitespace-pre-wrap font-mono text-sm">
+                  {transcriptionResult.transcription}
+                </pre>
+              </TabsContent>
+              <TabsContent value="meeting-notes">
+                <pre className="whitespace-pre-wrap font-mono text-sm">
+                  {transcriptionResult.summary_and_actions}
+                </pre>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
     </div>
-  );
+  )
 }
