@@ -3,7 +3,7 @@
 
 import { useState, useRef } from 'react'
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Mic, MicOff, Upload } from "lucide-react"
@@ -21,6 +21,7 @@ export default function Home() {
   } | null>(null)
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
   const [recordedAudioName, setRecordedAudioName] = useState<string | null>(null)
+  const [mode, setMode] = useState<'transcribe' | 'summarize'>('transcribe')
   const audioRef = useRef<MediaRecorder | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -97,9 +98,7 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Meet-sense Transcription</h1>
-
+    <div className="container mx-auto max-w-3xl space-y-8 py-8">
       {errorMessage && (
         <Alert variant="destructive">
           <AlertTitle>Error</AlertTitle>
@@ -107,45 +106,47 @@ export default function Home() {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Record or Upload Audio</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex justify-center space-x-4">
-            <Button
-              variant={isRecording ? "destructive" : "default"}
-              onClick={isRecording ? stopRecording : startRecording}
-              disabled={isTranscribing}
-            >
-              {isRecording ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-              {isRecording ? 'Stop Recording' : 'Start Recording'}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isRecording || isTranscribing}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Upload Audio
-            </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept="audio/*"
-              className="hidden"
-            />
-          </div>
-
-          {recordedAudioUrl && (
-            <div className="mt-4">
-              <p className="text-sm font-medium">{recordedAudioName}</p>
-              <audio controls src={recordedAudioUrl} className="w-full mt-2" />
-            </div>
-          )}
+      <Card className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+        <CardContent className="flex flex-col items-center justify-center p-12">
+          <Button
+            size="lg"
+            variant={isRecording ? "destructive" : "secondary"}
+            onClick={isRecording ? stopRecording : startRecording}
+            disabled={isTranscribing}
+            className="h-24 w-24 rounded-full text-2xl"
+          >
+            {isRecording ? <MicOff className="h-12 w-12" /> : <Mic className="h-12 w-12" />}
+          </Button>
+          <p className="mt-4 text-lg font-semibold">
+            {isRecording ? 'Stop Recording' : 'Start Recording'}
+          </p>
         </CardContent>
       </Card>
+
+      <div className="flex justify-center space-x-4">
+        <Button
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isRecording || isTranscribing}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          Upload Audio
+        </Button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          accept="audio/*"
+          className="hidden"
+        />
+      </div>
+
+      <Tabs defaultValue="transcribe" onValueChange={(value) => setMode(value as 'transcribe' | 'summarize')}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="transcribe">Transcribe</TabsTrigger>
+          <TabsTrigger value="summarize">Summarize</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {isTranscribing && (
         <div className="flex justify-center">
@@ -153,24 +154,28 @@ export default function Home() {
         </div>
       )}
 
+      {recordedAudioUrl && (
+        <div className="mt-4">
+          <p className="text-sm font-medium">{recordedAudioName}</p>
+          <audio controls src={recordedAudioUrl} className="w-full mt-2" />
+        </div>
+      )}
+
       {transcriptionResult && (
         <Card>
-          <CardHeader>
-            <CardTitle>Transcription Result</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="transcription">
+          <CardContent className="p-6">
+            <Tabs defaultValue={mode}>
               <TabsList>
-                <TabsTrigger value="transcription">Transcription</TabsTrigger>
-                <TabsTrigger value="meeting-notes">Meeting Notes</TabsTrigger>
+                <TabsTrigger value="transcribe">Transcription</TabsTrigger>
+                <TabsTrigger value="summarize">Summary</TabsTrigger>
               </TabsList>
-              <TabsContent value="transcription">
-                <pre className="whitespace-pre-wrap font-mono text-sm">
+              <TabsContent value="transcribe">
+                <pre className="whitespace-pre-wrap font-mono text-sm mt-4">
                   {transcriptionResult.transcription}
                 </pre>
               </TabsContent>
-              <TabsContent value="meeting-notes">
-                <pre className="whitespace-pre-wrap font-mono text-sm">
+              <TabsContent value="summarize">
+                <pre className="whitespace-pre-wrap font-mono text-sm mt-4">
                   {transcriptionResult.summary_and_actions}
                 </pre>
               </TabsContent>
